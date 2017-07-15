@@ -1,0 +1,150 @@
+---
+title: "Untitled"
+author: "Alok Tiwari"
+date: "July 14, 2017"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+# install.packages("ggplot2")
+# install.packages("ROCR")
+# install.packages("stringr")
+# install.packages("tidyr")
+# install.packages("tidyverse")
+# install.packages("caTools")
+#install.packages("manipulate")
+devtools::install_github("jcheng5/d3scatter")
+library(crosstalk)
+library(d3scatter)
+library(caTools)
+library(ROCR)
+library(ggplot2)
+library(stringr)
+library(tidyr)
+library(tidyverse)
+library(gridExtra)
+library(manipulate)
+# read data file and assign NA to blank rows
+rawdata <- read.csv("C:/Users/RA/Documents/CensusData.csv")
+rawdata[rawdata == ' ?'] = NA
+
+# omit NAs
+final_data = na.omit(rawdata)
+summary(final_data)
+str(final_data)
+attach(final_data)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r}
+final_data$Income_Group <- ifelse(as.character(final_data$Income) == " >50K","High","Low")
+shared_dataset <- SharedData$new(final_data)
+
+bscols(widths = c(2,10),
+  list(filter_checkbox("sex","Sex",shared_dataset,~sex,inline = TRUE),
+       filter_checkbox("Income_Group","Income",shared_dataset,~Income_Group,inline = TRUE),
+       filter_slider("age", "Age", shared_dataset, ~age, width = "100%")),
+  d3scatter(shared_dataset, ~capital.gain, ~hours.per.week, ~Income_Group,width="100%", x_lim = c(0,100000), height=300))
+
+bscols(widths = c(2,10),
+  list(filter_checkbox("Income_Group","Income", shared_dataset,~Income_Group, inline = TRUE),
+       filter_checkbox("sex","Sex",shared_dataset,~sex,inline = TRUE),
+       filter_slider("age", "Age", shared_dataset, ~age, width = "100%")),
+  d3scatter(shared_dataset, ~capital.loss, ~hours.per.week, ~Income_Group, x_lim = c(0,5000), width="100%", height=300))
+
+
+myplot1 <- ggplot(final_data, aes(Income, age, color=Income)) + 
+             geom_boxplot(outlier.colour = "red", outlier.shape = 1, outlier.size = 2)
+# manipulate(plot(myplot1),slider())
+#manipulate(boxplot(age ~ Income, data = final_data, outline = outline),outline = checkbox(FALSE, "Show outliers"))
+
+
+```
+```{r}
+# Library
+library(plotly)
+# replace outliers with max suggested value from boxplot
+b1 <- boxplot.stats(age)
+final_data$age = ifelse(final_data$age > b1$stats[5], b1$stats[5], final_data$age)
+
+b2 <- boxplot.stats(fnlwgt)
+final_data$fnlwgt = ifelse(final_data$fnlwgt > b2$stats[5], b2$stats[5], final_data$fnlwgt)
+final_data$fnlwgt = ifelse(final_data$fnlwgt < b2$stats[1], b2$stats[1], final_data$fnlwgt)
+
+b3 <- boxplot.stats(education.num)
+final_data$education.num = ifelse(final_data$education.num > b3$stats[5], b3$stats[5], final_data$education.num)
+final_data$education.num = ifelse(final_data$education.num < b3$stats[1], b3$stats[1], final_data$education.num)
+
+#b4 <- boxplot(final_data$hours.per.week)
+mean1 = mean(final_data$hours.per.week)
+Stdev = sd(final_data$hours.per.week)
+minlimit = mean1 - 2*Stdev
+maxlimit = mean1 + 2*Stdev
+final_data$hours.per.week = ifelse(final_data$hours.per.week > round(maxlimit), round(maxlimit), final_data$hours.per.week)
+final_data$hours.per.week = ifelse(final_data$hours.per.week < round(minlimit), round(minlimit), final_data$hours.per.week)
+p <- plot_ly(final_data, x = ~age, color = Income, type = "box")
+p
+p1 <- plot_ly(final_data, x = ~fnlwgt, color = Income, type = "box")
+p1
+p2 <- plot_ly(final_data, x = ~education.num, color = Income, type = "box")
+p2
+p3 <- plot_ly(final_data, x = ~hours.per.week, color = Income, type = "box")
+p3
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+
+final_data$Income = as.factor(trimws(final_data$Income, c("both")))
+final_data$education.num = as.factor(final_data$education.num)
+
+data_incomelessthan50 = final_data[(final_data$Income == levels(final_data$Income)[1]),]
+data_incomemorethan50 = final_data[final_data$Income == levels(final_data$Income)[2],]
+
+set.seed(101) 
+index_trainlessthan50 = sample.split(data_incomelessthan50$age, SplitRatio = .75)
+index_trainmorethan50 = sample.split(data_incomemorethan50$age, SplitRatio = .75)
+
+train_lessthan50 = data_incomelessthan50[index_trainlessthan50, 1:15]
+test_lessthan50 = data_incomelessthan50[!index_trainlessthan50, 1:15]
+train_morethan50 = data_incomemorethan50[index_trainmorethan50, 1:15]
+test_morethan50 = data_incomemorethan50[!index_trainmorethan50, 1:15]
+traning_data = rbind(train_lessthan50,train_morethan50)
+testing_data = rbind(test_lessthan50, test_morethan50)
+```
+
+```{r}
+model1 = glm(Income ~ age + workclass + fnlwgt + education + marital.status + occupation + race + sex + capital.gain + 
+               capital.loss + hours.per.week, data = traning_data, family = "binomial")
+#summary(model1)
+
+```
+
+```{r}
+pred = predict(model1,testing_data,type="response")
+pred1 = round(pred, 0)
+combined = cbind(testing_data$Income, pred1)
+df_combined = data.frame(combined)
+
+tb = table(df_combined$V1, df_combined$pred1)
+tb
+preds = prediction(as.numeric(pred), as.numeric(testing_data$Income))
+perf = performance(preds, "tpr", "fpr")
+plot(perf)
+```
+
